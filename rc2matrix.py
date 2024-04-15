@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+#!/usr/bin/env python3
 
 import argparse
 import sys
@@ -120,7 +120,7 @@ if __name__ == '__main__':
         from urllib3.exceptions import InsecureRequestWarning
         requests.packages.urllib3.disable_warnings(category=InsecureRequestWarning)
 
-    api_base = "https://" + args.hostname + "/"
+    api_base = "http://" + args.hostname + "/"
 
     # Obtain an admin token if not provided
     if args.token is None:
@@ -164,7 +164,9 @@ if __name__ == '__main__':
     # import new users
     with open(args.inputs + usersfile, 'r') as jsonfile:
         # Each line is a JSON representing a RC user
-        for line in jsonfile:
+        #l = len(jsonfile.readlines())
+        for i, line in enumerate(jsonfile):
+            print(f'Process user {i}', end= '\r')
             currentuser = json.loads(line)
             pprint("current user", currentuser)
             if ("username" not in currentuser):
@@ -178,7 +180,8 @@ if __name__ == '__main__':
                 print("user " + username + " already processed (in cache), skipping")
                 continue
             # matrix username will be @username:server
-            api_endpoint = api_base + "_synapse/admin/v2/users/@" + username + ":" + args.hostname
+            hostname = args.hostname.split(':')[0] 
+            api_endpoint = api_base + "_synapse/admin/v2/users/@" + username + ":" + hostname
             api_params = {"admin": False, "displayname": displayname}
             response = session.put(api_endpoint, json=api_params, headers=api_headers_admin)
             if response.status_code < 200 or response.status_code > 299: #2xx
