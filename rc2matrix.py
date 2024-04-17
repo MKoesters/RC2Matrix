@@ -119,8 +119,13 @@ if __name__ == '__main__':
         ssl.SSLContext.verify_mode = property(lambda self: ssl.CERT_NONE, lambda self, newval: None)
         from urllib3.exceptions import InsecureRequestWarning
         requests.packages.urllib3.disable_warnings(category=InsecureRequestWarning)
-
-    api_base = "http://" + args.hostname + "/"
+    if ':' in args.hostname:
+        hostname = args.hostname.split(':')[0]
+        port = args.hostname.split(':')[1]
+    else:
+        hostname = args.hostname
+        port = 443
+    api_base = "http://" + hostname + f':{port}' + "/"
 
     # Obtain an admin token if not provided
     if args.token is None:
@@ -180,7 +185,6 @@ if __name__ == '__main__':
                 print("user " + username + " already processed (in cache), skipping")
                 continue
             # matrix username will be @username:server
-            hostname = args.hostname.split(':')[0] 
             api_endpoint = api_base + "_synapse/admin/v2/users/@" + username + ":" + hostname
             api_params = {"admin": False, "displayname": displayname}
             response = session.put(api_endpoint, json=api_params, headers=api_headers_admin)
@@ -248,7 +252,7 @@ if __name__ == '__main__':
         for line in jsonfile:
             currentroom = json.loads(line)
             if currentroom['_id'] in roomids:
-                print("room " + currentroom['name'] + " already processed (in cache), skipping")
+                print("room " + currentroom.get('name', 'Direct Chat')  + " already processed (in cache), skipping")
                 continue
             pprint("current room", currentroom)
 
@@ -277,17 +281,26 @@ if __name__ == '__main__':
                 roomname="ZZ-" + "-".join(currentroom['usernames'])
                 api_params = {"visibility": "private", "name": roomname, "join_rules": "invite", 'is_direct': 'true'}
             elif currentroom['t'] == 'c': # public chatroom
-                roomname=currentroom['name']
-                if 'announcement' in currentroom: # there is a topic
-                    api_params = {"visibility": "public", "name": roomname, "room_alias_name": roomname, 'topic': currentroom['announcement']}
-                else:
-                    api_params = {"visibility": "public", "name": roomname, "room_alias_name": roomname}
+                roomname=currentroom.get('name', None)
+                if 'announcement' in currentroom and roomname: # there is a topic
+                    api_params = {"visibility": "public", "join_rules": "invite", "name": roomname, "room_alias_name": roomname, 'topic': currentroom['announcement']}
+                elif not 'announcement' in currentroom and roomname:
+                    api_params = {"visibility": "public", "join_rules": "invite", "name": roomname, "room_alias_name": roomname}
+                elif 'announcement' in currentroom and not roomname:
+                    api_params = {"visibility": "public", "join_rules": "invite", "room_alias_name": roomname, 'topic': currentroom['announcement']}
+                elif not 'announcement' in currentroom and not roomname:
+                    api_params = {"visibility": "public", "join_rules": "invite"}
             elif currentroom['t'] == 'p': # private chatroom
-                roomname=currentroom['name']
-                if 'announcement' in currentroom: # there is a topic
+                roomname=currentroom.get('name', None)
+                if 'announcement' in currentroom and roomname: # there is a topic
                     api_params = {"visibility": "private", "join_rules": "invite", "name": roomname, "room_alias_name": roomname, 'topic': currentroom['announcement']}
-                else:
+                elif not 'announcement' in currentroom and roomname:
                     api_params = {"visibility": "private", "join_rules": "invite", "name": roomname, "room_alias_name": roomname}
+                elif 'announcement' in currentroom and not roomname:
+                    api_params = {"visibility": "private", "join_rules": "invite", "room_alias_name": roomname, 'topic': currentroom['announcement']}
+                elif not 'announcement' in currentroom and not roomname:
+                    api_params = {"visibility": "private", "join_rules": "invite"}
+
             else:
                 exit("Unsupported room type : " + currentroom['t'])
             response = session.post(api_endpoint, json=api_params, headers=api_headers_create)
@@ -415,8 +428,8 @@ if __name__ == '__main__':
             response=None
             if currentmsg['rid'] in roomids:
                 tgtroom = roomids[currentmsg['rid']] # tgtroom is the matrix room
-                tgtuser = "@" + currentmsg['u']['username'] + ":" + args.hostname # tgtuser is the matrix user
-                dateTimeObj = datetime.fromisoformat(currentmsg['ts']['$date'])
+                tgtuser = "@" + currentmsg['u']['username'] + ":" + hostname # tgtuser is the matrix user
+                dateTimeObj = datetime.fromtimestamp(int(currentmsg['ts']['$date']['$numberLong']))
                 tgtts = int(dateTimeObj.timestamp()*1000) # tgtts is the message timestamp
                 if tgtts <= int(args.startts): # skip too old message
                     print(", timestamp=" + str(tgtts) + ", skipping")
